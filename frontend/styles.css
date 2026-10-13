@@ -89,6 +89,59 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.task-main,
+.task-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.task-edit input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.task-list button,
+.task-list select {
+  padding: 4px 10px;
+  font-size: 0.9rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.task-list button:hover {
+  background: #f0f0f0;
+}
+
+.task-list li.done .task-title {
+  color: #888;
+  text-decoration: line-through;
+}
+
+@media (max-width: 480px) {
+  .task-main {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
