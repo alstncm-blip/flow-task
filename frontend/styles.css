@@ -31,15 +31,40 @@ h2 {
 
 .task-form {
   display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.task-form input {
-  flex: 1;
-  padding: 10px 12px;
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-form input,
+.task-form select,
+.task-form textarea,
+.filter-bar input,
+.filter-bar select {
+  padding: 8px 10px;
   font-size: 1rem;
+  font-family: inherit;
   border: 1px solid #ccc;
   border-radius: 6px;
+  background: #fff;
+}
+
+.task-form #task-title {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.task-form textarea,
+.task-edit textarea {
+  width: 100%;
+  resize: vertical;
 }
 
 .task-form button {
@@ -57,6 +82,8 @@ h2 {
 }
 
 .task-form input:disabled,
+.task-form select:disabled,
+.task-form textarea:disabled,
 .task-form button:disabled {
   background: #e0e0e0;
   color: #888;
@@ -89,16 +116,79 @@ h2 {
   overflow-wrap: anywhere;
 }
 
-.task-main,
-.task-edit {
+.filter-bar {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.filter-bar input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.task-main {
+  display: flex;
+  align-items: flex-start;
   gap: 8px;
 }
 
-.task-title {
+.task-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-info {
   flex: 1;
   min-width: 0;
+}
+
+.task-title {
+  font-weight: 600;
+}
+
+.task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.badge {
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  border-radius: 999px;
+  background: #eef0f3;
+  color: #444;
+}
+
+.badge.priority-high {
+  background: #fde8e8;
+  color: #b42318;
+}
+
+.badge.priority-low {
+  background: #eef4ff;
+  color: #3555a5;
+}
+
+.badge.overdue-badge {
+  background: #c62828;
+  color: #fff;
+  font-weight: 600;
+}
+
+.task-list li.overdue {
+  border-left: 4px solid #c62828;
+}
+
+.task-description {
+  margin: 8px 0 0;
+  color: #555;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
 }
 
 .task-actions {
@@ -107,9 +197,10 @@ h2 {
   gap: 6px;
 }
 
-.task-edit input {
-  flex: 1;
-  min-width: 0;
+.task-edit input,
+.task-edit textarea,
+.task-edit select {
+  font-family: inherit;
   padding: 6px 8px;
   font-size: 1rem;
   border: 1px solid #ccc;
