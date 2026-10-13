@@ -56,6 +56,13 @@ h2 {
   background: #2459c4;
 }
 
+.task-form input:disabled,
+.task-form button:disabled {
+  background: #e0e0e0;
+  color: #888;
+  cursor: not-allowed;
+}
+
 .form-error {
   min-height: 1.2em;
   margin: 8px 0 0;

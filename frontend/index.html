@@ -13,9 +13,10 @@
     <form id="task-form" class="task-form" novalidate>
       <label for="task-title" class="sr-only">할 일 제목</label>
       <input id="task-title" name="title" type="text" placeholder="할 일 제목 (1~100자)" autocomplete="off">
-      <button type="submit">등록</button>
+      <button id="submit-button" type="submit">등록</button>
     </form>
     <p id="form-error" class="form-error" role="alert"></p>
+    <p id="storage-error" class="form-error" role="alert"></p>
 
     <section aria-labelledby="list-heading">
       <h2 id="list-heading">할 일 목록 <span id="task-count" class="count">(0)</span></h2>
