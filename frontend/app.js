@@ -15,7 +15,16 @@ const PRIORITIES = [
   { value: "LOW", label: "낮음" },
 ];
 const DEFAULT_PRIORITY = "NORMAL";
+// 서버(API-SPEC.md)와 같은 회원가입 규칙. 서버도 다시 검증한다.
+const USERNAME_PATTERN = /^[a-z0-9_]{4,30}$/;
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 64;
+const SESSION_EXPIRED_MESSAGE = "로그인이 필요합니다. 다시 로그인하세요.";
 
+// 로그인한 사용자({id, username, created_at}). 로그인 전에는 null이다.
+let currentUser = null;
+// 로그인 화면의 현재 모드: "login" 또는 "signup".
+let authMode = "login";
 // 마지막으로 API에서 받은 목록(검색·필터 적용 결과).
 let tasks = [];
 let loadFailed = false;
@@ -44,6 +53,26 @@ const priorityFilter = document.getElementById("filter-priority");
 const taskList = document.getElementById("task-list");
 const taskCount = document.getElementById("task-count");
 const emptyMessage = document.getElementById("empty-message");
+const loadingMessage = document.getElementById("loading-message");
+const userBar = document.getElementById("user-bar");
+const currentUserLabel = document.getElementById("current-user");
+const logoutButton = document.getElementById("logout-button");
+const authView = document.getElementById("auth-view");
+const authHeading = document.getElementById("auth-heading");
+const loginForm = document.getElementById("login-form");
+const loginUsername = document.getElementById("login-username");
+const loginPassword = document.getElementById("login-password");
+const loginButton = document.getElementById("login-button");
+const signupForm = document.getElementById("signup-form");
+const signupUsername = document.getElementById("signup-username");
+const signupPassword = document.getElementById("signup-password");
+const signupPasswordConfirm = document.getElementById("signup-password-confirm");
+const signupButton = document.getElementById("signup-button");
+const authError = document.getElementById("auth-error");
+const authMessage = document.getElementById("auth-message");
+const authSwitchText = document.getElementById("auth-switch-text");
+const authSwitchButton = document.getElementById("auth-switch-button");
+const taskView = document.getElementById("task-view");
 
 class ApiError extends Error {
   constructor(message, status) {
@@ -77,6 +106,11 @@ async function request(method, path, body) {
     throw new ApiError("API 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.", 0);
   }
 
+  // 할 일 API에서 401이면 세션이 없거나 만료된 것이므로 로그인 화면으로 돌아간다.
+  if (response.status === 401 && !path.startsWith("/auth/")) {
+    handleSessionExpired();
+    throw new ApiError(SESSION_EXPIRED_MESSAGE, 401);
+  }
   if (response.status === 204) {
     return null;
   }
@@ -186,6 +220,10 @@ function listPath() {
 
 // API에서 현재 검색·필터 조건의 목록을 다시 받아 화면을 그린다.
 async function loadTasks() {
+  // 로그아웃·세션 만료 뒤에는 목록을 요청하지 않는다.
+  if (currentUser === null) {
+    return;
+  }
   const requestId = ++listRequestId;
   try {
     const data = await request("GET", listPath());
@@ -535,4 +573,186 @@ priorityFilter.addEventListener("change", () => {
   loadTasks();
 });
 
-loadTasks();
+// 회원가입 입력 검증. 실패 시 오류 메시지, 통과 시 null을 반환한다.
+function validateSignup(username, password, passwordConfirm) {
+  if (!USERNAME_PATTERN.test(username)) {
+    return "아이디는 영문 소문자·숫자·밑줄(_) 4~30자로 입력하세요.";
+  }
+  const length = textLength(password);
+  if (length < PASSWORD_MIN_LENGTH || length > PASSWORD_MAX_LENGTH) {
+    return `비밀번호는 ${PASSWORD_MIN_LENGTH}~${PASSWORD_MAX_LENGTH}자로 입력하세요.`;
+  }
+  if (password !== passwordConfirm) {
+    return "비밀번호 확인이 일치하지 않습니다.";
+  }
+  return null;
+}
+
+function clearPasswords() {
+  loginPassword.value = "";
+  signupPassword.value = "";
+  signupPasswordConfirm.value = "";
+}
+
+// 이전 사용자의 목록·입력·검색 조건을 모두 지운다. 진행 중인 목록 응답도 무시한다.
+function resetTaskState() {
+  listRequestId += 1;
+  window.clearTimeout(searchTimer);
+  tasks = [];
+  loadFailed = false;
+  editingId = null;
+  editError = "";
+  filters.query = "";
+  filters.status = "";
+  filters.priority = "";
+  searchInput.value = "";
+  statusFilter.value = "";
+  priorityFilter.value = "";
+  resetForm();
+  formError.textContent = "";
+  apiError.textContent = "";
+  render();
+}
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const isLogin = mode === "login";
+  loginForm.hidden = !isLogin;
+  signupForm.hidden = isLogin;
+  authHeading.textContent = isLogin ? "로그인" : "회원가입";
+  authSwitchText.textContent = isLogin ? "계정이 없나요?" : "이미 계정이 있나요?";
+  authSwitchButton.textContent = isLogin ? "회원가입" : "로그인";
+  authError.textContent = "";
+  authMessage.textContent = "";
+  clearPasswords();
+}
+
+function showAuthView(mode, message) {
+  currentUser = null;
+  resetTaskState();
+  loadingMessage.hidden = true;
+  taskView.hidden = true;
+  userBar.hidden = true;
+  currentUserLabel.textContent = "";
+  authView.hidden = false;
+  setAuthMode(mode);
+  authMessage.textContent = message || "";
+  (mode === "login" ? loginUsername : signupUsername).focus();
+}
+
+function showTaskView(user) {
+  currentUser = user;
+  resetTaskState();
+  loadingMessage.hidden = true;
+  authView.hidden = true;
+  clearPasswords();
+  // 사용자 입력(아이디)은 글자로만 표시한다.
+  currentUserLabel.textContent = `${user.username} 님`;
+  userBar.hidden = false;
+  taskView.hidden = false;
+  titleInput.focus();
+  loadTasks();
+}
+
+function handleSessionExpired() {
+  if (currentUser === null) {
+    return;
+  }
+  showAuthView("login", SESSION_EXPIRED_MESSAGE);
+}
+
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (loginButton.disabled) {
+    return;
+  }
+  const username = loginUsername.value;
+  const password = loginPassword.value;
+  authMessage.textContent = "";
+  if (username === "" || password === "") {
+    authError.textContent = "아이디와 비밀번호를 입력하세요.";
+    return;
+  }
+  loginButton.disabled = true;
+  let user;
+  try {
+    user = await request("POST", "/auth/login", { username, password });
+  } catch (requestError) {
+    authError.textContent = requestError.message;
+    loginPassword.value = "";
+    loginPassword.focus();
+    return;
+  } finally {
+    loginButton.disabled = false;
+  }
+  authError.textContent = "";
+  showTaskView(user);
+});
+
+signupForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (signupButton.disabled) {
+    return;
+  }
+  const username = signupUsername.value;
+  const password = signupPassword.value;
+  authMessage.textContent = "";
+  const error = validateSignup(username, password, signupPasswordConfirm.value);
+  if (error) {
+    authError.textContent = error;
+    return;
+  }
+  signupButton.disabled = true;
+  try {
+    await request("POST", "/auth/signup", { username, password });
+  } catch (requestError) {
+    authError.textContent = `가입하지 못했습니다. ${requestError.message}`;
+    return;
+  } finally {
+    signupButton.disabled = false;
+  }
+  // 가입 후 자동 로그인하지 않고 로그인 화면으로 이동한다.
+  setAuthMode("login");
+  loginUsername.value = username;
+  authMessage.textContent = "가입했습니다. 로그인하세요.";
+  loginPassword.focus();
+});
+
+authSwitchButton.addEventListener("click", () => {
+  setAuthMode(authMode === "login" ? "signup" : "login");
+  (authMode === "login" ? loginUsername : signupUsername).focus();
+});
+
+logoutButton.addEventListener("click", async () => {
+  if (logoutButton.disabled) {
+    return;
+  }
+  logoutButton.disabled = true;
+  try {
+    await request("POST", "/auth/logout");
+  } catch (requestError) {
+    // 서버에서 세션을 지우지 못했으면 로그인 상태를 유지하고 오류를 보여 준다.
+    apiError.textContent = `로그아웃하지 못했습니다. ${requestError.message}`;
+    return;
+  } finally {
+    logoutButton.disabled = false;
+  }
+  showAuthView("login", "로그아웃했습니다.");
+});
+
+// 시작할 때 세션 쿠키로 로그인 상태를 확인한다. 쿠키 값은 화면 코드에서 읽을 수 없다.
+async function init() {
+  let user;
+  try {
+    user = await request("GET", "/auth/me");
+  } catch (requestError) {
+    showAuthView("login", "");
+    if (requestError.status !== 401) {
+      authError.textContent = requestError.message;
+    }
+    return;
+  }
+  showTaskView(user);
+}
+
+init();
