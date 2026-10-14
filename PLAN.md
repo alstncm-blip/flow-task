@@ -77,8 +77,15 @@
   결과: 현재 PC(WSL)를 App 서버로 사용해 확인. active, /api/health 200 {"status":"ok"}, /api/tasks·/ 200.
   메인 프로세스 kill -9 후 자동 재시작되어 health 정상, 등록한 [T13검증] 항목 유지 확인 후 삭제(204).
   남은 작업: 부팅 시 자동 시작(sudo systemctl enable task-flow-api)은 미설정. T12(DB 서버 분리)는 미완료라 DB는 같은 PC의 MariaDB 사용.
-- [ ] T14: Web 서버 Nginx와 정적 파일·/api 프록시 구성.
+- [x] T14: Web 서버 Nginx와 정적 파일·/api 프록시 구성.
   확인: Web 주소로 등록, DB 저장, App 재시작 후 유지.
+  기록(2026-10-14): deploy/nginx/task-flow.conf 작성(80 default_server, root /var/www/task-flow, /api/ → 127.0.0.1:8000, nosniff, 요청 본문 64k 제한).
+  /home/mzcedu가 750이라 www-data가 읽지 못해 화면 파일을 /var/www/task-flow에 복사. 기본 사이트는 sites-enabled 링크만 제거(sites-available/default 유지).
+  설치: sudo cp frontend 세 파일 → /var/www/task-flow, 설정을 sites-available/task-flow에 복사·링크, nginx -t, reload. 프런트 코드는 상대 경로 /api라 변경 없음.
+  사전 확인: 같은 설정을 8088 포트로 일반 사용자 실행. 화면 세 파일 200, /api/health·/api/tasks 200, 없는 경로 404, 70KB 본문 413, 빈 제목 422.
+  결과: Nginx 1.28.3. 80 포트로 등록 201(id 3) → MariaDB SELECT로 행 확인 → systemctl restart task-flow-api(PID 변경) 후 같은 항목 조회 유지.
+  Windows 브라우저 http://localhost 접속 확인(Nginx 접근 로그). 테스트 항목 삭제 204.
+  참고: frontend 수정 시 /var/www/task-flow에 다시 복사해야 반영됨. App 분리 시 proxy_pass를 App 서버 사설 IP로 변경. T12 미완료로 Web·App·DB가 같은 PC에서 동작.
 ## 실행 기준
 T01~T04: python3 -m http.server 5500 --bind 127.0.0.1 --directory frontend
 T05~T11: 가상환경에서 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
