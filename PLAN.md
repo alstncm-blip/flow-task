@@ -89,6 +89,28 @@
   확인: 서비스 재시작 후 8000의 / ·app.js·styles.css 404, /api/health·/api/tasks 200. 80(Nginx) 화면·API 200, 등록 201·삭제 204.
   5500(http.server)은 T01~T04 수동 실행용이라 현재 미실행. T08 이후 /api가 없어 사용하지 않음.
   참고: frontend 수정 시 /var/www/task-flow에 다시 복사해야 반영됨. App 분리 시 proxy_pass를 App 서버 사설 IP로 변경. T12 미완료로 Web·App·DB가 같은 PC에서 동작.
+## 6장: 여러 사용자(PRD F10~F14)
+- [x] T15: API-SPEC.md에 인증·사용자별 할 일 계약 추가. users·sessions 테이블과 tasks.user_id(NULL 허용) 추가.
+  확인: python -m backend.init_db로 생성, 2회차 실행 시 변경 없음, 기존 tasks 행 유지(user_id NULL). 기존 API 동작 유지.
+  기록(2026-10-14): PRD.md를 여러 사용자 앱으로 수정(F10~F14, 인증과 보안, 제외 기능 조정). 결정: 서버 세션 쿠키, 사용자 아이디 로그인, 소유자 없는 기존 행은 보존·숨김.
+  API-SPEC.md에 User 객체, 세션 쿠키(tf_session, HttpOnly·SameSite=Lax·Path=/api·7일, 토큰은 SHA-256 해시만 저장), signup·login·logout·me, 할 일 API 로그인 적용, 401·409 추가.
+  backend/models.py에 UserRow(users)·SessionRow(sessions, users 삭제 시 CASCADE)·TaskRow.user_id(FK users.id, NULL 허용, 인덱스) 추가.
+  backend/init_db.py는 없는 테이블만 만들고, tasks에 user_id가 없을 때만 ALTER TABLE ADD COLUMN(삭제·초기화 없음). 새 패키지 없음.
+  실행: python -m backend.init_db 2회 → 1회차 users·sessions 생성·tasks.user_id 추가, 2회차 모두 "변경하지 않음".
+  결과: DESCRIBE로 세 테이블(InnoDB)·UNIQUE(username, token_hash)·FK 2개 확인. 기존 tasks 1행 실행 전후 값 동일, user_id NULL.
+  포트 8001에서 바뀐 모델로 기존 API 회귀 17개 통과(등록·부분 수정·422·404·204·필터 AND·%_ 검색, 응답에 user_id 없음, user_id 필드 전송 시 422). 테스트 행 삭제.
+  실행 중인 서비스(이전 코드)도 테이블 변경 후 8000·80에서 /api/tasks 200. 서비스 재시작은 T18 배포 반영 전까지 불필요. 남은 오류 없음.
+  참고: T18 전까지 새로 등록한 할 일은 user_id NULL이라 T18 이후 보이지 않는다.
+- [ ] T16: 회원가입 API(POST /api/auth/signup). 비밀번호는 scrypt 해시로 저장.
+  확인: 가입 201, 중복 아이디 409, 형식 위반 422, DB에 평문 비밀번호 없음.
+- [ ] T17: 로그인·로그아웃·내 정보 API(POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me). 세션 쿠키 발급·무효화.
+  확인: 로그인 성공 시 HttpOnly 쿠키, 틀린 아이디·비밀번호 모두 같은 401, 로그아웃 후 같은 쿠키로 me 401, 만료 세션 401.
+- [ ] T18: 할 일 API에 로그인 필수 적용과 사용자별 분리.
+  확인: 미로그인 401, A의 목록에 B 항목 없음, B 항목 id로 A가 수정·삭제 시 404, user_id NULL 행은 아무에게도 안 보임.
+- [ ] T19: 화면에 회원가입·로그인·로그아웃 추가. 미로그인 시 로그인 화면, 401 응답 시 로그인 화면으로 이동.
+  확인: 브라우저에서 가입→로그인→등록→로그아웃→다른 사용자 로그인 시 이전 사용자 항목 안 보임. 입력값은 글자로 표시.
+- [ ] T20: Web(Nginx)·App(systemd) 배포 반영.
+  확인: Web 주소에서 두 사용자 분리 동작, App 재시작 후 로그인 상태와 데이터 유지.
 ## 실행 기준
 T01~T04: python3 -m http.server 5500 --bind 127.0.0.1 --directory frontend
 T05~T11: 가상환경에서 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
