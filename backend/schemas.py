@@ -95,6 +95,15 @@ class SignupRequest(BaseModel):
     password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
 
 
+class LoginRequest(BaseModel):
+    """POST /api/auth/login 요청 본문. 형식은 검사하지 않고 일치 여부만 확인한다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str
+    password: str
+
+
 class User(BaseModel):
     """API 응답의 사용자. 비밀번호와 해시는 포함하지 않는다."""
 

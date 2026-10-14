@@ -23,6 +23,11 @@ def read_env_file(path: Path) -> dict[str, str]:
     return values
 
 
+def optional_setting(name: str, default: str = "") -> str:
+    """필수가 아닌 설정을 읽는다. 환경변수가 .env 값보다 우선한다."""
+    return os.environ.get(name, read_env_file(ENV_FILE).get(name, default))
+
+
 def load_settings() -> dict[str, str]:
     """DB 접속 정보를 읽는다. 환경변수가 .env 값보다 우선한다."""
     file_values = read_env_file(ENV_FILE)

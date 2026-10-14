@@ -110,8 +110,18 @@
   동시 가입 6건 중 201 1건·409 5건, 해시 형식·재계산 일치·틀린 비밀번호 불일치, DB 평문 없음, 같은 비밀번호도 salt·해시 다름). 서버 로그에 비밀번호 없음.
   같은 비밀번호 검사는 테스트가 같은 DB 연결(REPEATABLE READ) 안에서 조회해 처음에 실패로 나왔으나, 새 연결로 확인해 정상. 할 일 API 회귀 17개 통과.
   테스트 사용자(t16_*) 7명 삭제해 users 0행. 실행 중인 서비스는 아직 이전 코드(재시작 시 반영). 남은 오류 없음.
-- [ ] T17: 로그인·로그아웃·내 정보 API(POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me). 세션 쿠키 발급·무효화.
+- [x] T17: 로그인·로그아웃·내 정보 API(POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me). 세션 쿠키 발급·무효화.
   확인: 로그인 성공 시 HttpOnly 쿠키, 틀린 아이디·비밀번호 모두 같은 401, 로그아웃 후 같은 쿠키로 me 401, 만료 세션 401.
+  기록(2026-10-14): security.py에 verify_password(일정 시간 비교)·세션 토큰(token_urlsafe 32바이트)·SHA-256 해시 추가. store.py에 DbUserStore.authenticate, DbSessionStore(create·get_user·delete, 7일 만료, 로그인 시 해당 사용자의 만료 세션 정리).
+  main.py에 login(tf_session 쿠키: HttpOnly·SameSite=Lax·Path=/api·Max-Age=604800)·logout(세션 삭제·쿠키 제거, 항상 204)·me와 current_user 의존성(T18에서 재사용) 추가. schemas.py LoginRequest.
+  database.py optional_setting 추가, .env.example에 COOKIE_SECURE=false 예시 추가. 새 패키지 없음.
+  수정: DB 정렬 규칙(utf8mb4_general_ci)이 대소문자·끝 공백을 무시해 'T17_ALICE'·'t17_alice '로도 로그인되므로 아이디를 글자 그대로 다시 비교.
+  보완: 없는 아이디도 더미 해시로 scrypt 비교해 응답 시간 차이를 줄임(측정 틀린 비밀번호 41.8ms / 없는 아이디 35.2ms).
+  실행: 포트 8001 uvicorn + urllib·SQL 스크립트. T17 38개 통과(로그인 200·쿠키 속성·토큰 응답 미포함, DB에는 토큰 해시만·만료 7일, me 200/쿠키 없음·잘못된 토큰·해시값 쿠키 401,
+  틀린 비밀번호·없는 아이디·대문자·끝 공백·다른 사람 비밀번호·빈 값 모두 같은 401 본문·쿠키 없음, 422 4종에 비밀번호 없음, 로그인마다 새 토큰,
+  로그아웃 204·Max-Age=0·세션 행 삭제·이전 쿠키 401·다른 세션 유지·재로그아웃·쿠키 없이 204, 만료 세션 401·재로그인 시 정리, 사용자별 me 구분, health 로그인 불필요).
+  포트 8002에서 COOKIE_SECURE=true 시 Secure 속성 확인. T16 회귀 47개(테스트의 같은 연결 조회 문제 수정 후), 할 일 회귀 17개 통과. 서버 로그에 비밀번호·토큰 없음.
+  테스트 사용자(t16_*, t17_*)와 세션 삭제. 브라우저로 등록된 tasks id 10(user_id NULL)은 사용자 데이터라 유지. 실행 중인 서비스는 이전 코드. 남은 오류 없음.
 - [ ] T18: 할 일 API에 로그인 필수 적용과 사용자별 분리.
   확인: 미로그인 401, A의 목록에 B 항목 없음, B 항목 id로 A가 수정·삭제 시 404, user_id NULL 행은 아무에게도 안 보임.
 - [ ] T19: 화면에 회원가입·로그인·로그아웃 추가. 미로그인 시 로그인 화면, 401 응답 시 로그인 화면으로 이동.

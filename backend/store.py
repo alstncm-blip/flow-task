@@ -1,13 +1,21 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from .database import SessionLocal
-from .models import TaskRow, UserRow
+from .models import SessionRow, TaskRow, UserRow
 from .schemas import Priority, Status, Task, TaskCreate, User
-from .security import hash_password
+from .security import (
+    DUMMY_PASSWORD_HASH,
+    hash_password,
+    hash_session_token,
+    new_session_token,
+    verify_password,
+)
+
+SESSION_LIFETIME = timedelta(days=7)
 
 
 def to_task(row: TaskRow) -> Task:
@@ -114,3 +122,52 @@ class DbUserStore:
         except IntegrityError as error:
             # 동시에 같은 아이디로 가입해도 username UNIQUE 제약으로 한 명만 성공한다.
             raise UsernameTakenError(username) from error
+
+    def authenticate(self, username: str, password: str) -> User | None:
+        """아이디와 비밀번호가 일치하면 사용자를, 아니면 None을 반환한다."""
+        with SessionLocal() as session:
+            row = session.scalars(select(UserRow).where(UserRow.username == username)).one_or_none()
+        # DB 정렬 규칙은 대소문자·끝 공백을 무시하므로 아이디가 글자 그대로 같은지 다시 확인한다.
+        if row is not None and row.username != username:
+            row = None
+        # 없는 아이디도 해시 비교를 거쳐 응답 시간으로 아이디 존재 여부를 알 수 없게 한다.
+        matched = verify_password(password, row.password_hash if row else DUMMY_PASSWORD_HASH)
+        if row is None or not matched:
+            return None
+        return to_user(row)
+
+
+class DbSessionStore:
+    """MariaDB sessions 테이블에 로그인 세션을 저장한다. 토큰은 SHA-256 해시로만 저장한다."""
+
+    def create(self, user_id: int) -> str:
+        """새 세션을 만들고 쿠키에 넣을 토큰을 반환한다. 이 사용자의 만료된 세션은 정리한다."""
+        token = new_session_token()
+        now = utc_now()
+        with SessionLocal() as session, session.begin():
+            session.execute(delete(SessionRow).where(SessionRow.user_id == user_id, SessionRow.expires_at <= now))
+            session.add(
+                SessionRow(
+                    token_hash=hash_session_token(token),
+                    user_id=user_id,
+                    created_at=now,
+                    expires_at=now + SESSION_LIFETIME,
+                )
+            )
+        return token
+
+    def get_user(self, token: str) -> User | None:
+        """만료되지 않은 세션의 사용자를 반환한다. 없거나 만료됐으면 None."""
+        statement = (
+            select(UserRow)
+            .join(SessionRow, SessionRow.user_id == UserRow.id)
+            .where(SessionRow.token_hash == hash_session_token(token), SessionRow.expires_at > utc_now())
+        )
+        with SessionLocal() as session:
+            row = session.scalars(statement).one_or_none()
+            return to_user(row) if row else None
+
+    def delete(self, token: str) -> None:
+        """세션을 삭제한다. 없는 세션이어도 오류 없이 끝난다."""
+        with SessionLocal() as session, session.begin():
+            session.execute(delete(SessionRow).where(SessionRow.token_hash == hash_session_token(token)))

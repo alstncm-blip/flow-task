@@ -1,23 +1,42 @@
 import logging
 
-from fastapi import FastAPI, HTTPException, Request, status
+from typing import Annotated
+
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from .schemas import Priority, SignupRequest, Status, Task, TaskCreate, TaskUpdate, User
-from .store import DbTaskStore, DbUserStore, UsernameTakenError
+from .database import optional_setting
+from .schemas import LoginRequest, Priority, SignupRequest, Status, Task, TaskCreate, TaskUpdate, User
+from .store import SESSION_LIFETIME, DbSessionStore, DbTaskStore, DbUserStore, UsernameTakenError
 
 app = FastAPI(title="Task Flow API")
 store = DbTaskStore()
 user_store = DbUserStore()
+session_store = DbSessionStore()
 logger = logging.getLogger(__name__)
 
 TASK_NOT_FOUND = "할 일을 찾을 수 없습니다."
 USERNAME_TAKEN = "이미 사용 중인 아이디입니다."
 DATABASE_ERROR = "DB에 연결할 수 없거나 처리 중 오류가 발생했습니다."
+LOGIN_FAILED = "아이디 또는 비밀번호가 올바르지 않습니다."
+LOGIN_REQUIRED = "로그인이 필요합니다."
+
+SESSION_COOKIE = "tf_session"
+COOKIE_PATH = "/api"
+# HTTPS를 쓰면 COOKIE_SECURE=true로 설정해 쿠키를 HTTPS에서만 보낸다.
+COOKIE_SECURE = optional_setting("COOKIE_SECURE", "false").lower() == "true"
+
+
+def current_user(tf_session: Annotated[str | None, Cookie()] = None) -> User:
+    """세션 쿠키로 로그인한 사용자를 찾는다. 없거나 만료됐으면 401."""
+    user = session_store.get_user(tf_session) if tf_session else None
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LOGIN_REQUIRED)
+    return user
 
 
 @app.exception_handler(SQLAlchemyError)
@@ -49,6 +68,38 @@ def signup(data: SignupRequest) -> User:
         return user_store.create(data.username, data.password)
     except UsernameTakenError:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=USERNAME_TAKEN) from None
+
+
+@app.post("/api/auth/login")
+def login(data: LoginRequest, response: Response) -> User:
+    """로그인하고 세션 쿠키를 발급한다. 아이디·비밀번호 중 무엇이 틀렸는지 알리지 않는다."""
+    user = user_store.authenticate(data.username, data.password)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LOGIN_FAILED)
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_store.create(user.id),
+        max_age=int(SESSION_LIFETIME.total_seconds()),
+        path=COOKIE_PATH,
+        secure=COOKIE_SECURE,
+        httponly=True,
+        samesite="lax",
+    )
+    return user
+
+
+@app.post("/api/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(response: Response, tf_session: Annotated[str | None, Cookie()] = None) -> None:
+    """현재 세션을 서버에서 삭제하고 쿠키를 지운다. 세션이 없어도 204."""
+    if tf_session:
+        session_store.delete(tf_session)
+    response.delete_cookie(SESSION_COOKIE, path=COOKIE_PATH, secure=COOKIE_SECURE, httponly=True, samesite="lax")
+
+
+@app.get("/api/auth/me")
+def me(user: Annotated[User, Depends(current_user)]) -> User:
+    """로그인한 사용자 정보를 반환한다."""
+    return user
 
 
 @app.get("/api/tasks")
