@@ -142,13 +142,20 @@
   배포: 사용자가 화면 파일을 /var/www/task-flow에 복사하고 task-flow-api 재시작(13:34:41, T16~T18 API 반영).
   결과: Windows 브라우저 http://localhost에서 사용자 확인 정상(가입→로그인→등록→로그아웃→두 번째 계정에서 첫 계정 항목 안 보임).
   DB: 사용자 2명, 할 일은 모두 소유자 있음(NULL 0), 비밀번호는 scrypt 해시. Nginx 로그 signup 201·login 200·logout 204·미로그인 me 401. 남은 오류 없음.
-- [ ] T20: Web(Nginx)·App(systemd) 배포 반영.
+- [x] T20: Web(Nginx)·App(systemd) 배포 반영.
   확인: Web 주소에서 두 사용자 분리 동작, App 재시작 후 로그인 상태와 데이터 유지.
+  기록(2026-10-14): 코드 변경 없음. 배포 상태 확인: 서비스 시작(13:34:41)이 마지막 backend 커밋(T18, 13:29) 이후, /var/www/task-flow 화면 파일·Nginx 설정·systemd 파일 모두 저장소와 동일, .env 600, task-flow-api enabled(사용자 설정).
+  실행: BASE=http://127.0.0.1(Nginx 80)로 테스트. T18 사용자 분리 31개, 로그인 상태 할 일 회귀 17개, T17 인증 38개 통과. Nginx 경유 Set-Cookie 속성(HttpOnly·Max-Age=604800·Path=/api·SameSite=lax)과 nosniff 확인.
+  재시작 전 테스트 계정 2개 로그인·등록 후 상태 저장 → 사용자가 sudo systemctl restart task-flow-api(PID 18282→18750, 13:41:58).
+  결과: 재시작 후 8개 통과(이전 세션 쿠키로 me 200, 두 계정 할 일 그대로, 분리 유지, 다른 사용자 항목 삭제 404, 실제 사용자 2명 데이터 변경 없음, 재시작 후 로그아웃 204·이후 401). 미로그인 시 화면 200, me·tasks 401. 서비스 로그 오류 없음.
+  테스트 계정·할 일 삭제, 사용자 계정 2개와 할 일 3개 유지. 남은 작업: T12(DB 서버 분리)는 미완료로 Web·App·DB가 같은 PC에서 동작.
 ## 실행 기준
 T01~T04: python3 -m http.server 5500 --bind 127.0.0.1 --directory frontend
 T05~T11: 가상환경에서 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 T13~: sudo systemctl start task-flow-api (수동 uvicorn은 8000 대신 다른 포트 사용)
 T14~: 화면은 http://localhost(Nginx), 8000은 API만 응답
+T15~ 배포 순서: python -m backend.init_db(없는 테이블·컬럼만 추가) → sudo cp frontend 세 파일 /var/www/task-flow/ → sudo systemctl restart task-flow-api
+  화면과 API는 함께 반영한다(T18 API만 반영하면 이전 화면은 401로 동작하지 않음).
 실제 존재하는 파일을 확인한 뒤 명령을 실행한다.
 ## 기록
 각 작업에 변경 파일, 실행 명령, 실제 확인 결과, 남은 오류를 기록한다.
