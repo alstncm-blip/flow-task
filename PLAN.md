@@ -68,13 +68,21 @@
   테스트 항목([T11검증] 제목)은 확인 후 삭제해 tasks는 0행. AUTO_INCREMENT는 6부터 시작. 남은 오류 없음.
 ## 5장: 서버 분리
 - [ ] T12: DB 서버 구성 후 App 서버에서 SELECT 1 확인.
-- [ ] T13: App 서버 코드·가상환경·환경변수·systemd 구성.
+- [x] T13: App 서버 코드·가상환경·환경변수·systemd 구성.
   확인: App에서 /api/health 응답.
+  기록(2026-10-14): deploy/task-flow-api.service 작성(User mzcedu, .venv python -m uvicorn, 0.0.0.0:8000, Restart=on-failure). DB 접속 정보는 앱이 .env에서 읽고 unit 파일에는 비밀값 없음.
+  설치: sudo cp deploy/task-flow-api.service /etc/systemd/system/ → daemon-reload → start. systemd-analyze verify 통과.
+  가상환경은 Python 3.14.4로 다시 만들어 requirements.txt 버전과 일치 확인. .env 권한이 664로 바뀌어 있어 600으로 되돌림.
+  수정: 첫 시작 시 수동 uvicorn이 8000 포트를 사용 중이라 Errno 98로 재시작 반복. 수동 프로세스 종료 후 정상.
+  결과: 현재 PC(WSL)를 App 서버로 사용해 확인. active, /api/health 200 {"status":"ok"}, /api/tasks·/ 200.
+  메인 프로세스 kill -9 후 자동 재시작되어 health 정상, 등록한 [T13검증] 항목 유지 확인 후 삭제(204).
+  남은 작업: 부팅 시 자동 시작(sudo systemctl enable task-flow-api)은 미설정. T12(DB 서버 분리)는 미완료라 DB는 같은 PC의 MariaDB 사용.
 - [ ] T14: Web 서버 Nginx와 정적 파일·/api 프록시 구성.
   확인: Web 주소로 등록, DB 저장, App 재시작 후 유지.
 ## 실행 기준
 T01~T04: python3 -m http.server 5500 --bind 127.0.0.1 --directory frontend
 T05~T11: 가상환경에서 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+T13~: sudo systemctl start task-flow-api (수동 uvicorn은 8000 대신 다른 포트 사용)
 실제 존재하는 파일을 확인한 뒤 명령을 실행한다.
 ## 기록
 각 작업에 변경 파일, 실행 명령, 실제 확인 결과, 남은 오류를 기록한다.
