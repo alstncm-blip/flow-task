@@ -1,17 +1,22 @@
 import logging
 
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from .schemas import Priority, Status, Task, TaskCreate, TaskUpdate
-from .store import DbTaskStore
+from .schemas import Priority, SignupRequest, Status, Task, TaskCreate, TaskUpdate, User
+from .store import DbTaskStore, DbUserStore, UsernameTakenError
 
 app = FastAPI(title="Task Flow API")
 store = DbTaskStore()
+user_store = DbUserStore()
 logger = logging.getLogger(__name__)
 
 TASK_NOT_FOUND = "할 일을 찾을 수 없습니다."
+USERNAME_TAKEN = "이미 사용 중인 아이디입니다."
 DATABASE_ERROR = "DB에 연결할 수 없거나 처리 중 오류가 발생했습니다."
 
 
@@ -22,10 +27,28 @@ def handle_database_error(request: Request, error: SQLAlchemyError) -> JSONRespo
     return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"detail": DATABASE_ERROR})
 
 
+@app.exception_handler(RequestValidationError)
+async def handle_validation_error(request: Request, error: RequestValidationError) -> JSONResponse:
+    """인증 요청의 422 응답에는 보낸 값(input)을 넣지 않아 비밀번호가 응답에 나오지 않게 한다."""
+    if not request.url.path.startswith("/api/auth/"):
+        return await request_validation_exception_handler(request, error)
+    errors = [{key: value for key, value in item.items() if key != "input"} for item in error.errors()]
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={"detail": jsonable_encoder(errors)})
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     """API 서버가 요청을 처리할 수 있는지 확인한다."""
     return {"status": "ok"}
+
+
+@app.post("/api/auth/signup", status_code=status.HTTP_201_CREATED)
+def signup(data: SignupRequest) -> User:
+    """회원가입한다. 로그인 쿠키는 발급하지 않는다."""
+    try:
+        return user_store.create(data.username, data.password)
+    except UsernameTakenError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=USERNAME_TAKEN) from None
 
 
 @app.get("/api/tasks")

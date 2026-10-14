@@ -2,10 +2,12 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from .database import SessionLocal
-from .models import TaskRow
-from .schemas import Priority, Status, Task, TaskCreate
+from .models import TaskRow, UserRow
+from .schemas import Priority, Status, Task, TaskCreate, User
+from .security import hash_password
 
 
 def to_task(row: TaskRow) -> Task:
@@ -19,6 +21,15 @@ def to_task(row: TaskRow) -> Task:
         due_date=row.due_date,
         created_at=row.created_at.replace(tzinfo=timezone.utc),
     )
+
+
+def to_user(row: UserRow) -> User:
+    return User(id=row.id, username=row.username, created_at=row.created_at.replace(tzinfo=timezone.utc))
+
+
+def utc_now() -> datetime:
+    """DB에 저장할 UTC 일시(시간대 정보 없음, 초 단위)."""
+    return datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
 
 
 def to_column_value(value: object) -> object:
@@ -57,7 +68,7 @@ class DbTaskStore:
             status=Status.TODO.value,
             priority=data.priority.value,
             due_date=data.due_date,
-            created_at=datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None),
+            created_at=utc_now(),
         )
         with SessionLocal() as session, session.begin():
             session.add(row)
@@ -83,3 +94,23 @@ class DbTaskStore:
                 return False
             session.delete(row)
             return True
+
+
+class UsernameTakenError(Exception):
+    """이미 사용 중인 아이디로 가입하려 할 때 발생한다."""
+
+
+class DbUserStore:
+    """MariaDB users 테이블에 사용자를 저장한다."""
+
+    def create(self, username: str, password: str) -> User:
+        """비밀번호를 해시해 저장한다. 같은 아이디가 있으면 UsernameTakenError."""
+        row = UserRow(username=username, password_hash=hash_password(password), created_at=utc_now())
+        try:
+            with SessionLocal() as session, session.begin():
+                session.add(row)
+                session.flush()
+                return to_user(row)
+        except IntegrityError as error:
+            # 동시에 같은 아이디로 가입해도 username UNIQUE 제약으로 한 명만 성공한다.
+            raise UsernameTakenError(username) from error

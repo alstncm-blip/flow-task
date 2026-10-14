@@ -101,8 +101,15 @@
   포트 8001에서 바뀐 모델로 기존 API 회귀 17개 통과(등록·부분 수정·422·404·204·필터 AND·%_ 검색, 응답에 user_id 없음, user_id 필드 전송 시 422). 테스트 행 삭제.
   실행 중인 서비스(이전 코드)도 테이블 변경 후 8000·80에서 /api/tasks 200. 서비스 재시작은 T18 배포 반영 전까지 불필요. 남은 오류 없음.
   참고: T18 전까지 새로 등록한 할 일은 user_id NULL이라 T18 이후 보이지 않는다.
-- [ ] T16: 회원가입 API(POST /api/auth/signup). 비밀번호는 scrypt 해시로 저장.
+- [x] T16: 회원가입 API(POST /api/auth/signup). 비밀번호는 scrypt 해시로 저장.
   확인: 가입 201, 중복 아이디 409, 형식 위반 422, DB에 평문 비밀번호 없음.
+  기록(2026-10-14): backend/security.py(hash_password: 16바이트 무작위 salt, scrypt N=2^14·r=8·p=1, 'scrypt$N$r$p$salt$hash' 형식), schemas.py SignupRequest·User, store.py DbUserStore(UNIQUE 위반 시 UsernameTakenError), main.py POST /api/auth/signup(409).
+  수정: FastAPI 기본 422 응답이 보낸 값(input)을 담아 짧은 비밀번호가 응답에 나오므로 /api/auth/ 경로의 422에서만 input 제거. 할 일 API 422 형식은 유지. API-SPEC.md에 반영. 새 패키지 없음.
+  실행: 포트 8001 uvicorn + urllib·SQL 스크립트. 47개 통과(가입 201·응답은 id·username·created_at만·쿠키 없음, 중복 409, 경계 4·30자 아이디와 8·64자·한글 비밀번호 201,
+  위반 16종 422(3·31자, 대문자, 공백, 앞 공백, 하이픈, 한글, 끝 줄바꿈, 7·65자 비밀번호, 필드 누락, 추가 필드, 숫자·null 타입), 잘못된 JSON 422, 422 응답에 비밀번호 없음,
+  동시 가입 6건 중 201 1건·409 5건, 해시 형식·재계산 일치·틀린 비밀번호 불일치, DB 평문 없음, 같은 비밀번호도 salt·해시 다름). 서버 로그에 비밀번호 없음.
+  같은 비밀번호 검사는 테스트가 같은 DB 연결(REPEATABLE READ) 안에서 조회해 처음에 실패로 나왔으나, 새 연결로 확인해 정상. 할 일 API 회귀 17개 통과.
+  테스트 사용자(t16_*) 7명 삭제해 users 0행. 실행 중인 서비스는 아직 이전 코드(재시작 시 반영). 남은 오류 없음.
 - [ ] T17: 로그인·로그아웃·내 정보 API(POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me). 세션 쿠키 발급·무효화.
   확인: 로그인 성공 시 HttpOnly 쿠키, 틀린 아이디·비밀번호 모두 같은 401, 로그아웃 후 같은 쿠키로 me 401, 만료 세션 401.
 - [ ] T18: 할 일 API에 로그인 필수 적용과 사용자별 분리.
