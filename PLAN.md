@@ -85,11 +85,15 @@
   사전 확인: 같은 설정을 8088 포트로 일반 사용자 실행. 화면 세 파일 200, /api/health·/api/tasks 200, 없는 경로 404, 70KB 본문 413, 빈 제목 422.
   결과: Nginx 1.28.3. 80 포트로 등록 201(id 3) → MariaDB SELECT로 행 확인 → systemctl restart task-flow-api(PID 변경) 후 같은 항목 조회 유지.
   Windows 브라우저 http://localhost 접속 확인(Nginx 접근 로그). 테스트 항목 삭제 204.
+  추가(2026-10-14): backend/main.py에서 화면 파일 제공(StaticFiles) 제거, 8000은 /api만 응답. API-SPEC.md 화면 제공 항목 수정.
+  확인: 서비스 재시작 후 8000의 / ·app.js·styles.css 404, /api/health·/api/tasks 200. 80(Nginx) 화면·API 200, 등록 201·삭제 204.
+  5500(http.server)은 T01~T04 수동 실행용이라 현재 미실행. T08 이후 /api가 없어 사용하지 않음.
   참고: frontend 수정 시 /var/www/task-flow에 다시 복사해야 반영됨. App 분리 시 proxy_pass를 App 서버 사설 IP로 변경. T12 미완료로 Web·App·DB가 같은 PC에서 동작.
 ## 실행 기준
 T01~T04: python3 -m http.server 5500 --bind 127.0.0.1 --directory frontend
 T05~T11: 가상환경에서 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 T13~: sudo systemctl start task-flow-api (수동 uvicorn은 8000 대신 다른 포트 사용)
+T14~: 화면은 http://localhost(Nginx), 8000은 API만 응답
 실제 존재하는 파일을 확인한 뒤 명령을 실행한다.
 ## 기록
 각 작업에 변경 파일, 실행 명령, 실제 확인 결과, 남은 오류를 기록한다.
